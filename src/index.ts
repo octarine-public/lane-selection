@@ -17,9 +17,16 @@ import { MenuManager } from "./menu"
 const bootstrap = new (class CLaneSelection {
 	private setPosition = false
 	private readonly sleeper = new Sleeper()
+	private readonly additionalDelay = 1 * 1000
 	private readonly cacheHeroNames = new Set<string>()
 	private readonly heroesDisallowed = new Set<number>()
 	private readonly menu = new MenuManager(this.sleeper)
+
+	protected get Delay() {
+		const ping = GameState.Ping,
+			delay = this.additionalDelay
+		return this.mtRand(delay / 2 + ping, delay + ping)
+	}
 
 	public PostDataUpdate() {
 		if (
@@ -46,7 +53,7 @@ const bootstrap = new (class CLaneSelection {
 		}
 
 		this.cacheHeroNames.add(getName)
-		this.sleeper.Sleep((1 / 30) * 2 + GameState.Ping, "possibleHero")
+		this.sleeper.Sleep(this.Delay, "possibleHero")
 		GameState.ExecuteCommand(`possible_hero ${getName}`)
 	}
 
@@ -117,6 +124,10 @@ const bootstrap = new (class CLaneSelection {
 		}
 		this.setPosition = true
 		GameState.ExecuteCommand("dota_select_starting_position " + positionId)
+	}
+
+	private mtRand(min: number, max: number): number {
+		return Math.floor(Math.random() * (max - min + 1)) + min
 	}
 })()
 
