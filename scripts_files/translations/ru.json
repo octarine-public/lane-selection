@@ -12,7 +12,9 @@
 	"Easy lane": "Легкая линия",
 	"Hard lane": "Сложная линия",
 	"Mid lane": "Центральная линия",
+	"Based from role": "Основываясь на роли",
 	"Primary attribute hero": "Основной атрибут героя",
 	"Auto Lane selection": "Авто выбор линии",
-	"Reset settings to default": "Сброс настроек по умолчанию"
+	"Reset settings to default": "Сброс настроек по умолчанию",
+	"Selecting a lane based on the\nchosen role in a ranked game": "Выбор линии на основе\nвыбранной роли в рейтинговой игре"
 }

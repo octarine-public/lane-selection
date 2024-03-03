@@ -12,6 +12,7 @@ import { ELanePicker } from "./enum"
 export class MenuManager {
 	public HeroNames: string[] = []
 	public readonly State: Menu.Toggle
+	public readonly BasedFromRole: Menu.Toggle
 	public readonly SelecteLane: Menu.Dropdown
 	public readonly HeroSelected: Menu.ImageSelector
 
@@ -34,6 +35,12 @@ export class MenuManager {
 			ImageData.Paths.Icons.magic_resist
 		)
 		this.State = this.tree.AddToggle("State")
+		this.BasedFromRole = this.tree.AddToggle(
+			"Based from role",
+			true,
+			"Selecting a lane based on the\nchosen role in a ranked game"
+		)
+
 		this.SelecteLane = this.tree.AddDropdown(
 			"Select lane",
 			this.laneNames,
@@ -61,6 +68,7 @@ export class MenuManager {
 	protected ResetSettings() {
 		if (!this.sleeper.Sleeping("ResetSettings")) {
 			this.State.value = this.State.defaultValue
+			this.BasedFromRole.value = this.BasedFromRole.defaultValue
 			this.SelecteLane.SelectedID = this.SelecteLane.defaultValue
 			this.heroAttribute.SelectedID = this.heroAttribute.defaultValue
 			NotificationsSDK.Push(new ResetSettingsUpdated())

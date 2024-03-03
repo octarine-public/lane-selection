@@ -4,6 +4,7 @@ import {
 	DOTA_CHAT_MESSAGE,
 	EventsSDK,
 	GameState,
+	LaneSelection,
 	LocalPlayer,
 	PlayerCustomData,
 	Sleeper,
@@ -37,13 +38,11 @@ const bootstrap = new (class CLaneSelection {
 			return
 		}
 
-		const possibleHeroID =
-			PlayerCustomData.Array.find(x => x.IsLocalPlayer)?.DataTeamPlayer
-				?.PossibleHeroSelection ?? 0
+		const playerData = PlayerCustomData.Array.find(x => x.IsLocalPlayer)
 
-		this.UpdateMarkerToMapPosition()
+		this.UpdateMarkerToMapPosition(playerData)
 
-		if (possibleHeroID !== 0) {
+		if ((playerData?.DataTeamPlayer?.PossibleHeroSelection ?? 0) !== 0) {
 			return
 		}
 
@@ -96,11 +95,14 @@ const bootstrap = new (class CLaneSelection {
 		}
 	}
 
-	protected UpdateMarkerToMapPosition() {
+	protected UpdateMarkerToMapPosition(
+		playerData: Nullable<PlayerCustomData>,
+		positionId: ELanePicker = this.getLaneByRole(playerData)
+	) {
 		if (this.setPosition) {
 			return
 		}
-		let positionId = this.menu.SelecteLane.SelectedID + 1
+
 		const localTeam = GameState.LocalTeam
 		switch (positionId) {
 			case ELanePicker.EASY:
@@ -128,6 +130,31 @@ const bootstrap = new (class CLaneSelection {
 
 	private mtRand(min: number, max: number): number {
 		return Math.floor(Math.random() * (max - min + 1)) + min
+	}
+
+	private getLaneByRole(playerData: Nullable<PlayerCustomData>) {
+		const menu = this.menu,
+			laneByMenu = menu.SelecteLane.SelectedID + 1
+		if (!menu.BasedFromRole.value || playerData === undefined) {
+			return laneByMenu
+		}
+		const laneSelections = playerData.LaneSelections
+		for (let index = laneSelections.length - 1; index > -1; index--) {
+			const lane = laneSelections[index]
+			switch (lane) {
+				case LaneSelection.MID_LANE:
+					return ELanePicker.MID
+				case LaneSelection.OFF_LANE:
+					return ELanePicker.HARD
+				case LaneSelection.SUPPORT:
+					return ELanePicker.JUNGLE
+				case LaneSelection.HARD_SUPPORT:
+					return ELanePicker.EASY
+				default:
+					return ELanePicker.EASY
+			}
+		}
+		return laneByMenu
 	}
 })()
 
