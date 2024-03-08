@@ -102,30 +102,28 @@ const bootstrap = new (class CLaneSelection {
 		if (this.setPosition) {
 			return
 		}
-
-		const localTeam = GameState.LocalTeam
+		let newLane = -1
+		const localTeam = GameState.LocalTeam,
+			isDire = localTeam === Team.Dire
 		switch (positionId) {
-			case ELanePicker.EASY:
-				positionId = localTeam !== Team.Dire ? ELanePicker.EASY : ELanePicker.HARD
-				break
 			case ELanePicker.HARD:
-				positionId = localTeam !== Team.Dire ? ELanePicker.HARD : ELanePicker.EASY
+				newLane = !isDire ? ELanePicker.HARD : ELanePicker.EASY
+				break
+			case ELanePicker.EASY:
+				newLane = !isDire ? ELanePicker.EASY : ELanePicker.HARD
 				break
 			case ELanePicker.JUNGLE:
-				positionId =
-					localTeam !== Team.Dire
-						? ELanePicker.JUNGLE
-						: ELanePicker.JUNGLE_ENEMY
+				newLane = !isDire ? ELanePicker.JUNGLE : ELanePicker.JUNGLE_ENEMY
 				break
 			case ELanePicker.JUNGLE_ENEMY:
-				positionId =
-					localTeam !== Team.Dire
-						? ELanePicker.JUNGLE_ENEMY
-						: ELanePicker.JUNGLE
+				newLane = !isDire ? ELanePicker.JUNGLE_ENEMY : ELanePicker.JUNGLE
+				break
+			default:
+				newLane = ELanePicker.MID
 				break
 		}
 		this.setPosition = true
-		GameState.ExecuteCommand("dota_select_starting_position " + positionId)
+		GameState.ExecuteCommand("dota_select_starting_position " + newLane)
 	}
 
 	private mtRand(min: number, max: number): number {
