@@ -8,15 +8,17 @@ import {
 	LocalPlayer,
 	PlayerCustomData,
 	Sleeper,
+	SOType,
 	Team,
 	UnitData
 } from "github.com/octarine-public/wrapper/index"
 
-import { ELanePicker } from "./enum"
+import { ELanePicker, ETeam } from "./enum"
 import { MenuManager } from "./menu"
 
 const bootstrap = new (class CLaneSelection {
 	private setPosition = false
+	private isRoleLobby = false
 	private readonly sleeper = new Sleeper()
 	private readonly additionalDelay = 1 * 1000
 	private readonly cacheHeroNames = new Set<string>()
@@ -30,33 +32,29 @@ const bootstrap = new (class CLaneSelection {
 	}
 
 	public PostDataUpdate() {
-		if (
-			!GameState.IsConnected ||
-			!this.menu.State.value ||
-			LocalPlayer?.IsSpectator
-		) {
+		if (!GameState.IsConnected || !this.menu.State.value) {
 			return
 		}
-
+		if (LocalPlayer === undefined || LocalPlayer.IsSpectator) {
+			return
+		}
 		const playerData = PlayerCustomData.Array.find(x => x.IsLocalPlayer)
-
+		const possibleHero = playerData?.DataTeamPlayer?.PossibleHeroSelection ?? 0
 		this.UpdateMarkerToMapPosition(playerData)
-
-		if ((playerData?.DataTeamPlayer?.PossibleHeroSelection ?? 0) !== 0) {
+		if (possibleHero !== 0) {
 			return
 		}
-
 		const getName = this.GetReplacedHeroName()
 		if (getName === undefined || this.sleeper.Sleeping("possibleHero")) {
 			return
 		}
-
 		this.cacheHeroNames.add(getName)
 		this.sleeper.Sleep(this.Delay, "possibleHero")
 		GameState.ExecuteCommand(`possible_hero ${getName}`)
 	}
 
-	public GameChanged() {
+	public GameEnded() {
+		this.isRoleLobby = false
 		this.setPosition = false
 		this.sleeper.FullReset()
 		this.cacheHeroNames.clear()
@@ -79,6 +77,24 @@ const bootstrap = new (class CLaneSelection {
 		}
 	}
 
+	public SharedObjectChanged(id: SOType, reason: number, obj: RecursiveMap) {
+		if (id !== SOType.Lobby) {
+			return
+		}
+		if (reason === 2) {
+			this.setPosition = false
+			this.isRoleLobby = false
+		}
+		if (reason !== 0) {
+			return
+		}
+		const members = this.getMember(obj)
+		if (members.length <= 10) {
+			const findMember = members.find(member => member.has("lane_selection_flags"))
+			this.isRoleLobby = (findMember?.size ?? 0) !== 0
+		}
+	}
+
 	protected GetReplacedHeroName(): Nullable<string> {
 		for (let index = this.menu.HeroNames.length - 1; index > -1; index--) {
 			const heroName = this.menu.HeroNames[index]
@@ -97,9 +113,9 @@ const bootstrap = new (class CLaneSelection {
 
 	protected UpdateMarkerToMapPosition(
 		playerData: Nullable<PlayerCustomData>,
-		positionId: ELanePicker = this.getLaneByRole(playerData)
+		positionId = this.getLaneByRole(playerData)
 	) {
-		if (this.setPosition) {
+		if (this.setPosition || positionId === -1) {
 			return
 		}
 		let newLane = -1
@@ -133,8 +149,15 @@ const bootstrap = new (class CLaneSelection {
 	private getLaneByRole(playerData: Nullable<PlayerCustomData>) {
 		const menu = this.menu,
 			laneByMenu = menu.SelecteLane.SelectedID + 1
-		if (!menu.BasedFromRole.value || playerData === undefined) {
+		if (!menu.BasedFromRole.value) {
 			return laneByMenu
+		}
+		if (!this.isRoleLobby && playerData === undefined) {
+			return laneByMenu
+		}
+		if (playerData === undefined) {
+			this.setPosition = false
+			return -1
 		}
 		const laneSelections = playerData.LaneSelections
 		for (let index = laneSelections.length - 1; index > -1; index--) {
@@ -154,12 +177,22 @@ const bootstrap = new (class CLaneSelection {
 		}
 		return laneByMenu
 	}
+
+	private getMember(obj: RecursiveMap) {
+		return (obj.get("all_members") as RecursiveMap[]).filter(
+			x =>
+				x.has("id") &&
+				(x.get("team") === ETeam.DIRE || x.get("team") === ETeam.RADIANT)
+		)
+	}
 })()
 
-EventsSDK.on("GameEnded", () => bootstrap.GameChanged())
-
-EventsSDK.on("GameStarted", () => bootstrap.GameChanged())
+EventsSDK.on("GameEnded", () => bootstrap.GameEnded())
 
 EventsSDK.on("PostDataUpdate", () => bootstrap.PostDataUpdate())
 
 EventsSDK.on("ChatEvent", (type, value) => bootstrap.OnChatEvent(type, value))
+
+EventsSDK.on("SharedObjectChanged", (id, reason, obj) =>
+	bootstrap.SharedObjectChanged(id, reason, obj)
+)

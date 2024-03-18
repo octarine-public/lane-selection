@@ -5,3 +5,10 @@ export const enum ELanePicker {
 	JUNGLE,
 	JUNGLE_ENEMY
 }
+
+export const enum ETeam {
+	DIRE,
+	RADIANT,
+	COACH,
+	DRAFT_POOl
+}
