@@ -82,8 +82,7 @@ const bootstrap = new (class CLaneSelection {
 			return
 		}
 		if (reason === 2) {
-			this.setPosition = false
-			this.isRoleLobby = false
+			this.GameEnded()
 		}
 		if (reason !== 0) {
 			return
