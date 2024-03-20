@@ -5,7 +5,9 @@ import {
 	EventsSDK,
 	GameState,
 	LaneSelection,
+	LaneSelectionFlags,
 	LocalPlayer,
+	Player,
 	PlayerCustomData,
 	Sleeper,
 	SOType,
@@ -13,17 +15,22 @@ import {
 	UnitData
 } from "github.com/octarine-public/wrapper/index"
 
-import { ELanePicker, ETeam } from "./enum"
+import { ELane, ETeam } from "./enum"
 import { MenuManager } from "./menu"
 
 const bootstrap = new (class CLaneSelection {
 	private setPosition = false
-	private isRoleLobby = false
 	private readonly sleeper = new Sleeper()
 	private readonly additionalDelay = 1 * 1000
 	private readonly cacheHeroNames = new Set<string>()
 	private readonly heroesDisallowed = new Set<number>()
 	private readonly menu = new MenuManager(this.sleeper)
+	private readonly laneSelections = new Map<bigint, Nullable<LaneSelectionFlags>>()
+
+	constructor() {
+		this.menu.SelecteLane.OnValue(() => (this.setPosition = false))
+		this.menu.BasedFromRole.OnValue(() => (this.setPosition = false))
+	}
 
 	protected get Delay() {
 		const ping = GameState.Ping,
@@ -35,28 +42,16 @@ const bootstrap = new (class CLaneSelection {
 		if (!GameState.IsConnected || !this.menu.State.value) {
 			return
 		}
-		if (LocalPlayer === undefined || LocalPlayer.IsSpectator) {
-			return
+		if (LocalPlayer !== undefined && !LocalPlayer.IsSpectator) {
+			this.UpdatePossibleHero()
+			this.UpdateMarker(LocalPlayer)
 		}
-		const playerData = PlayerCustomData.Array.find(x => x.IsLocalPlayer)
-		const possibleHero = playerData?.DataTeamPlayer?.PossibleHeroSelection ?? 0
-		this.UpdateMarkerToMapPosition(playerData)
-		if (possibleHero !== 0) {
-			return
-		}
-		const getName = this.GetReplacedHeroName()
-		if (getName === undefined || this.sleeper.Sleeping("possibleHero")) {
-			return
-		}
-		this.cacheHeroNames.add(getName)
-		this.sleeper.Sleep(this.Delay, "possibleHero")
-		GameState.ExecuteCommand(`possible_hero ${getName}`)
 	}
 
 	public GameEnded() {
-		this.isRoleLobby = false
 		this.setPosition = false
 		this.sleeper.FullReset()
+		this.laneSelections.clear()
 		this.cacheHeroNames.clear()
 		this.heroesDisallowed.clear()
 	}
@@ -87,11 +82,46 @@ const bootstrap = new (class CLaneSelection {
 		if (reason !== 0) {
 			return
 		}
-		const members = this.getMember(obj)
-		if (members.length <= 10) {
-			const findMember = members.find(member => member.has("lane_selection_flags"))
-			this.isRoleLobby = (findMember?.size ?? 0) !== 0
+		const members = this.getMembers(obj)
+		if (members.length > 10) {
+			return
 		}
+		for (let index = members.length - 1; index > -1; index--) {
+			const member = members[index],
+				steamID = member.get("id") as bigint,
+				laneSelectionFlags = member.get("lane_selection_flags")
+			if (steamID === undefined) {
+				continue
+			}
+			this.laneSelections.set(
+				steamID,
+				laneSelectionFlags as Nullable<LaneSelectionFlags>
+			)
+		}
+	}
+
+	protected UpdatePossibleHero() {
+		const playerData = PlayerCustomData.Array.find(x => x.IsLocalPlayer)
+		const possibleHero = playerData?.DataTeamPlayer?.PossibleHeroSelection ?? 0
+		if (possibleHero !== 0) {
+			return
+		}
+		const getName = this.GetReplacedHeroName()
+		if (getName === undefined || this.sleeper.Sleeping("possibleHero")) {
+			return
+		}
+		this.cacheHeroNames.add(getName)
+		this.sleeper.Sleep(this.Delay, "possibleHero")
+		GameState.ExecuteCommand(`possible_hero ${getName}`)
+	}
+
+	protected UpdateMarker(player: Player) {
+		const steamID = player.SteamID
+		if (steamID === undefined) {
+			return
+		}
+		const laneSelectionFlags = this.laneSelections.get(steamID)
+		this.setLane(player.Team, laneSelectionFlags)
 	}
 
 	protected GetReplacedHeroName(): Nullable<string> {
@@ -110,79 +140,55 @@ const bootstrap = new (class CLaneSelection {
 		}
 	}
 
-	protected UpdateMarkerToMapPosition(
-		playerData: Nullable<PlayerCustomData>,
-		positionId = this.getLaneByRole(playerData)
-	) {
-		if (this.setPosition || positionId === -1) {
-			return
-		}
-		let newLane = -1
-		const localTeam = GameState.LocalTeam,
-			isDire = localTeam === Team.Dire
-		switch (positionId) {
-			case ELanePicker.HARD:
-				newLane = !isDire ? ELanePicker.HARD : ELanePicker.EASY
-				break
-			case ELanePicker.EASY:
-				newLane = !isDire ? ELanePicker.EASY : ELanePicker.HARD
-				break
-			case ELanePicker.JUNGLE:
-				newLane = !isDire ? ELanePicker.JUNGLE : ELanePicker.JUNGLE_ENEMY
-				break
-			case ELanePicker.JUNGLE_ENEMY:
-				newLane = !isDire ? ELanePicker.JUNGLE_ENEMY : ELanePicker.JUNGLE
-				break
+	private getMembers(obj: RecursiveMap) {
+		return (obj.get("all_members") as RecursiveMap[]).filter(
+			x =>
+				x.has("id") &&
+				(x.get("team") === ETeam.Dire || x.get("team") === ETeam.Radiant)
+		)
+	}
+
+	private setLane(team: Team, laneSelectionFlags?: LaneSelectionFlags) {
+		const menu = this.menu,
+			isBasedFromRole = menu.BasedFromRole.value,
+			laneSelectionMenu = menu.SelecteLane.SelectedID
+
+		const laneSelection = isBasedFromRole
+			? laneSelectionFlags?.toMask[0] ?? laneSelectionMenu
+			: laneSelectionMenu
+
+		this.executeCommand(team, laneSelection)
+	}
+
+	private getELane(team: Team, lane: LaneSelection): ELane {
+		const isDire = team === Team.Dire
+		switch (lane) {
+			case LaneSelection.MID_LANE:
+				return ELane.Mid
+			case LaneSelection.SAFE_LANE:
+			case LaneSelection.HARD_SUPPORT:
+				return isDire ? ELane.Hard : ELane.Easy
+			case LaneSelection.OFF_LANE:
+				return isDire ? ELane.Easy : ELane.Hard
+			case LaneSelection.SUPPORT:
+				return isDire ? ELane.RadiantJungle : ELane.DireJungle
 			default:
-				newLane = ELanePicker.MID
-				break
+				return ELane.None
 		}
-		this.setPosition = true
-		GameState.ExecuteCommand("dota_select_starting_position " + newLane)
 	}
 
 	private mtRand(min: number, max: number): number {
 		return Math.floor(Math.random() * (max - min + 1)) + min
 	}
 
-	private getLaneByRole(playerData: Nullable<PlayerCustomData>) {
-		const menu = this.menu,
-			laneByMenu = menu.SelecteLane.SelectedID + 1
-		if (!menu.BasedFromRole.value) {
-			return laneByMenu
+	private executeCommand(team: Team, laneSelections: LaneSelection) {
+		if (this.setPosition) {
+			return
 		}
-		if (!this.isRoleLobby && playerData === undefined) {
-			return laneByMenu
-		}
-		if (playerData === undefined) {
-			this.setPosition = false
-			return -1
-		}
-		const laneSelections = playerData.LaneSelections
-		for (let index = laneSelections.length - 1; index > -1; index--) {
-			const lane = laneSelections[index]
-			switch (lane) {
-				case LaneSelection.MID_LANE:
-					return ELanePicker.MID
-				case LaneSelection.OFF_LANE:
-					return ELanePicker.HARD
-				case LaneSelection.SUPPORT:
-					return ELanePicker.JUNGLE
-				case LaneSelection.HARD_SUPPORT:
-					return ELanePicker.EASY
-				default:
-					return ELanePicker.EASY
-			}
-		}
-		return laneByMenu
-	}
-
-	private getMember(obj: RecursiveMap) {
-		return (obj.get("all_members") as RecursiveMap[]).filter(
-			x =>
-				x.has("id") &&
-				(x.get("team") === ETeam.DIRE || x.get("team") === ETeam.RADIANT)
-		)
+		const position = this.getELane(team, laneSelections)
+		// console.log(`Position: ${position} Lane: ${laneSelections} Team: ${team}`)
+		GameState.ExecuteCommand(`dota_select_starting_position ${position}`)
+		this.setPosition = true
 	}
 })()
 

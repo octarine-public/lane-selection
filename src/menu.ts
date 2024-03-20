@@ -1,5 +1,6 @@
 import {
 	ImageData,
+	LaneSelection,
 	Menu,
 	NotificationsSDK,
 	ResetSettingsUpdated,
@@ -7,13 +8,11 @@ import {
 	UnitData
 } from "github.com/octarine-public/wrapper/index"
 
-import { ELanePicker } from "./enum"
-
 export class MenuManager {
 	public HeroNames: string[] = []
 	public readonly State: Menu.Toggle
-	public readonly BasedFromRole: Menu.Toggle
 	public readonly SelecteLane: Menu.Dropdown
+	public readonly BasedFromRole: Menu.Toggle
 	public readonly HeroSelected: Menu.ImageSelector
 
 	private readonly tree: Menu.Node
@@ -22,11 +21,11 @@ export class MenuManager {
 	private readonly baseNode = Menu.AddEntry("Utility")
 	private readonly attrNames = ["Strength", "Agility", "Intellect", "Universal"]
 	private readonly laneNames = [
+		"Easy lane",
 		"Hard lane",
 		"Mid lane",
-		"Easy lane",
-		"Jungle",
-		"Enemy jungle"
+		"Support",
+		"Hard support"
 	]
 
 	constructor(private readonly sleeper: Sleeper) {
@@ -44,8 +43,9 @@ export class MenuManager {
 		this.SelecteLane = this.tree.AddDropdown(
 			"Select lane",
 			this.laneNames,
-			ELanePicker.MID
+			LaneSelection.MID_LANE
 		)
+
 		this.heroAttribute = this.tree.AddDropdown(
 			"Primary attribute hero",
 			this.attrNames
